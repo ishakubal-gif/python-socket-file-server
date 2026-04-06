@@ -3,13 +3,14 @@ import threading
 import os
 from utils import log_request
 
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", 10000))
 
 USERNAME = "admin"
 PASSWORD = "1234"
 
 def load_html(file):
-    with open(f"templates/{file}", "r") as f:
+    with open(f"templates/{file}", "r", encoding="utf-8") as f:
         return f.read()
 
 def handle_client(client_socket):
@@ -25,26 +26,25 @@ def handle_client(client_socket):
         return
 
     method, path = parts[0], parts[1]
-
     log_request(f"{method} {path}")
 
-    # LOGIN PAGE
     if path == "/":
         response_body = load_html("login.html")
 
-    # AUTH CHECK
     elif path.startswith("/home"):
         if f"username={USERNAME}&password={PASSWORD}" in request:
-            files = os.listdir()
+            files = [
+                f for f in os.listdir()
+                if f not in ["__pycache__", ".git"] and not f.endswith(".pyc")
+            ]
             file_list = "".join([f'<li><a href="/{f}">{f}</a></li>' for f in files])
             response_body = load_html("index.html").replace("{{files}}", file_list)
         else:
             response_body = "<h1>Unauthorized</h1>"
 
-    # FILE DOWNLOAD
     else:
-        file_path = path[1:]
-        if os.path.exists(file_path):
+        file_path = path.lstrip("/")
+        if os.path.exists(file_path) and os.path.isfile(file_path):
             with open(file_path, "rb") as f:
                 content = f.read()
             client_socket.send(b"HTTP/1.1 200 OK\r\n\r\n" + content)
@@ -57,20 +57,18 @@ def handle_client(client_socket):
     client_socket.send(response.encode())
     client_socket.close()
 
-
 def start_server(port):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, port))
     server.listen(5)
 
-    print(f"🌐 Server running at http://{HOST}:{port}")
+    print(f"Server running at http://{HOST}:{port}")
 
     while True:
         client_socket, addr = server.accept()
         thread = threading.Thread(target=handle_client, args=(client_socket,))
+        thread.daemon = True
         thread.start()
 
-
-# ✅ MAIN ENTRY POINT (THIS WAS MISSING)
 if __name__ == "__main__":
-    start_server(5000)
+    start_server(PORT)
